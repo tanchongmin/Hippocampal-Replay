@@ -1,0 +1,2348 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "3b7ed041-a82b-4e7d-9e4f-a8efcae2a7ee",
+   "metadata": {
+    "id": "3b7ed041-a82b-4e7d-9e4f-a8efcae2a7ee"
+   },
+   "source": [
+    "# Introduction\n",
+    "This notebook contains the 4 (+2 bonus) agents used in the paper \"Using Hippocampal Replay to Consolidate Experiences in Memory-Augmented Reinforcement Learning\"\n",
+    "- Random\n",
+    "- TD (bonus)\n",
+    "- Q-Learning (bonus)\n",
+    "- Go-Explore\n",
+    "- Go-Explore-Count\n",
+    "- Explore-Count\n",
+    "\n",
+    "It contains the 2 discrete state environments used\n",
+    "- Unwalled Maze\n",
+    "- Walled Maze\n",
+    "\n",
+    "It contains 2 bonus discrete state environments:\n",
+    "- Towers of Hanoi\n",
+    "- Nim"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "000f59b7-0167-4400-a116-1e9fcb2544e0",
+   "metadata": {
+    "id": "000f59b7-0167-4400-a116-1e9fcb2544e0"
+   },
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import matplotlib.pyplot as plt\n",
+    "import copy\n",
+    "from collections import defaultdict"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d61ceb7c-eac3-4cfe-a31e-356f0582d624",
+   "metadata": {
+    "id": "d61ceb7c-eac3-4cfe-a31e-356f0582d624"
+   },
+   "source": [
+    "# Agent Definition"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "93ca1159-6106-4f25-bf57-1643e64a5781",
+   "metadata": {
+    "id": "93ca1159-6106-4f25-bf57-1643e64a5781"
+   },
+   "outputs": [],
+   "source": [
+    "# this is the memory for the agents which need them\n",
+    "memory = defaultdict(lambda: 0)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "38ab6955-10f1-4752-acf9-d6436efedf0c",
+   "metadata": {
+    "id": "38ab6955-10f1-4752-acf9-d6436efedf0c"
+   },
+   "source": [
+    "## Agent 1: Random Agent"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "545a9b0d-37ce-4375-a410-3936e18da3ce",
+   "metadata": {
+    "id": "545a9b0d-37ce-4375-a410-3936e18da3ce"
+   },
+   "outputs": [],
+   "source": [
+    "def RandomAgent(env, **kwargs):\n",
+    "    return env.sample()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "f6c7bbc6-773e-4cb0-b42f-0eb2cda714a6",
+   "metadata": {
+    "id": "f6c7bbc6-773e-4cb0-b42f-0eb2cda714a6"
+   },
+   "source": [
+    "## Agent 2: TD Agent"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "2b4fc117-756b-41c0-b5e2-89eead91104a",
+   "metadata": {
+    "id": "2b4fc117-756b-41c0-b5e2-89eead91104a"
+   },
+   "source": [
+    "TD-error: $\\delta_t = r_{t} + \\gamma \\max_{a\\in A, a: s_t \\rightarrow s_{t+1}}V(s_{t+1}) - V(s_t)$\n",
+    "\n",
+    "Value update: $V(s_t) \\leftarrow V(s_t) + \\alpha\\delta_t$"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "67d91115-7ead-408d-8699-a09167c70a15",
+   "metadata": {
+    "id": "67d91115-7ead-408d-8699-a09167c70a15"
+   },
+   "outputs": [],
+   "source": [
+    "def TDAgent(env, **kwargs):\n",
+    "    eps = kwargs.get('eps', 1)\n",
+    "    GAMMA = 0.99\n",
+    "    ALPHA = 1\n",
+    "    \n",
+    "    curstate = env.staterep()\n",
+    "    \n",
+    "    if env.reward == 1:\n",
+    "        memory[curstate] = 1\n",
+    "        return\n",
+    "\n",
+    "    validmoves = env.getvalidmoves()\n",
+    "    bestmove = None\n",
+    "    bestvalue = -1\n",
+    "    \n",
+    "    # choose best move\n",
+    "    for move in validmoves:\n",
+    "        newenv = copy.deepcopy(env)\n",
+    "        newenv.step(move)\n",
+    "        nextstate = newenv.staterep()\n",
+    "            \n",
+    "        curvalue = memory[nextstate] \n",
+    "        if curvalue > bestvalue:\n",
+    "            bestvalue = curvalue\n",
+    "            bestmove = move\n",
+    "    \n",
+    "    # if epsilon, then choose randomly\n",
+    "    if eps > np.random.rand():\n",
+    "        bestmove = env.sample()\n",
+    "        \n",
+    "    # update current state value with optimal one-step lookahead estimate\n",
+    "    td_error = env.reward + GAMMA*bestvalue - memory[curstate]\n",
+    "    memory[curstate] = memory[curstate] + ALPHA*td_error\n",
+    "    \n",
+    "    return bestmove"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "54cf064e-898f-445d-8ed9-4e83cc98ffb7",
+   "metadata": {
+    "id": "54cf064e-898f-445d-8ed9-4e83cc98ffb7"
+   },
+   "source": [
+    "## Agent 3: Q-Learning Agent"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5d760d1c-eec6-4721-bc42-294588e6d1fc",
+   "metadata": {
+    "id": "5d760d1c-eec6-4721-bc42-294588e6d1fc"
+   },
+   "source": [
+    "TD-error: $\\delta_t = r_t + \\gamma\\max_{a\\in A}Q(s_{t+1},a) - Q(s_t, a_t)$\n",
+    "\n",
+    "Q-learning update: $Q(s_t, a_t) \\leftarrow Q(s_t, a_t) + \\alpha\\delta_t$"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "2357a12a-ad42-43b3-8909-e17f4159be69",
+   "metadata": {
+    "id": "2357a12a-ad42-43b3-8909-e17f4159be69"
+   },
+   "outputs": [],
+   "source": [
+    "def QAgent(env, **kwargs):\n",
+    "    eps = kwargs.get('eps', 1)\n",
+    "    \n",
+    "    GAMMA = 0.99\n",
+    "    ALPHA = 1\n",
+    "    \n",
+    "    curstate = env.staterep()\n",
+    "    \n",
+    "    if env.reward == 1:\n",
+    "        for move in env.getvalidmoves():\n",
+    "            memory[(curstate, move)] = 1\n",
+    "        return\n",
+    "\n",
+    "    validmoves = env.getvalidmoves()\n",
+    "    bestmove = None\n",
+    "    bestvalue = -1\n",
+    "    \n",
+    "    # if epsilon, then choose randomly\n",
+    "    if eps > np.random.rand():\n",
+    "        bestmove = env.sample()\n",
+    "    # else choose best move\n",
+    "    else:\n",
+    "        for move in validmoves:\n",
+    "            curvalue = memory[(curstate, move)] \n",
+    "            if curvalue > bestvalue:\n",
+    "                bestvalue = curvalue\n",
+    "                bestmove = move\n",
+    "        \n",
+    "    # do a one-step in the next direction\n",
+    "    newenv = copy.deepcopy(env)\n",
+    "    newenv.step(bestmove)\n",
+    "    nextstate = newenv.staterep()\n",
+    "    td_error = env.reward + GAMMA*np.max([memory[(nextstate, move)] for move in newenv.getvalidmoves()]) - memory[(curstate, bestmove)]\n",
+    "        \n",
+    "    # update the Q-function\n",
+    "    memory[(curstate, bestmove)] = memory[(curstate, bestmove)] + ALPHA*td_error\n",
+    "    \n",
+    "    return bestmove"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "934f2d62-11b0-4150-8a76-14039e20c963",
+   "metadata": {
+    "id": "934f2d62-11b0-4150-8a76-14039e20c963"
+   },
+   "source": [
+    "## Agent 4: Go-Explore"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "59265644-3b53-4894-8651-7e34b9b5d1cc",
+   "metadata": {
+    "id": "59265644-3b53-4894-8651-7e34b9b5d1cc"
+   },
+   "outputs": [],
+   "source": [
+    "def reward_formula(reward = 0, intrinsic = 0, moves = 0, numselected = 0, numvisits = 0, eps = 1e-20):\n",
+    "    return 10*reward + 10*intrinsic + 1*np.sqrt(moves) - 10*np.sqrt(numselected+numvisits)\n",
+    "    # return 10*reward + 1*np.sqrt(moves) - 10*np.sqrt(numselected+numvisits)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "3cbb6722-3ca7-43be-870a-8b201122320b",
+   "metadata": {
+    "id": "3cbb6722-3ca7-43be-870a-8b201122320b"
+   },
+   "outputs": [],
+   "source": [
+    "''' Chooses the next best memory state to go to '''\n",
+    "def ChooseState(env):\n",
+    "    bestvalue = -1e20\n",
+    "    bestkey = None\n",
+    "    \n",
+    "    # choose the best memory based on heuristics\n",
+    "    for key in memory:\n",
+    "        # do not choose final state as there is nothing left to explore\n",
+    "        if memory[key]['reward'] == 1: \n",
+    "            continue\n",
+    "        \n",
+    "        curmem = memory[key]\n",
+    "        reward = curmem['reward']\n",
+    "        intrinsic = curmem['intrinsic']\n",
+    "        moves = curmem['moves']\n",
+    "        numselected = curmem.get('numselected', 0)\n",
+    "        numvisits = curmem['numvisits']\n",
+    "        \n",
+    "        value = reward_formula(reward = reward, intrinsic = intrinsic, moves = moves, numselected = numselected, numvisits = numvisits)\n",
+    "        if value > bestvalue:\n",
+    "            bestvalue = value\n",
+    "            bestkey = key\n",
+    "    \n",
+    "    # generate the trajectory to get the environment state\n",
+    "    actionhistory = []\n",
+    "    \n",
+    "    for move in memory[bestkey]['actionhistory']:\n",
+    "        env.step(move)\n",
+    "        actionhistory.append(move)\n",
+    "        \n",
+    "    # increment the selection visit count\n",
+    "    if 'numselected' in memory[bestkey]:\n",
+    "        memory[bestkey]['numselected'] = memory[bestkey]['numselected'] + 1\n",
+    "    \n",
+    "    return (actionhistory, copy.deepcopy(env))\n",
+    "        "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "897adc24-76f0-4c3f-8e4b-cd8b6cffd26e",
+   "metadata": {
+    "id": "897adc24-76f0-4c3f-8e4b-cd8b6cffd26e"
+   },
+   "outputs": [],
+   "source": [
+    "''' Chooses the best move based on memory and intrinsic rewards '''\n",
+    "def GoExplore(env, **kwargs):\n",
+    "    \n",
+    "    # if completed, no need to continue to next move selection\n",
+    "    if env.done:\n",
+    "        return\n",
+    "    \n",
+    "    intrinsic_fn = kwargs.get('intrinsic_fn', None)\n",
+    "    replay = kwargs.get('replay', False)\n",
+    "    getbestmove = kwargs.get('getbestmove', False)\n",
+    "    actionhistory = kwargs.get('actionhistory', [])\n",
+    "    \n",
+    "    # if no intrinsic guiding value, then do without intrinsic motivation\n",
+    "    if intrinsic_fn is not None:\n",
+    "        intrinsic_value = intrinsic_fn(env)\n",
+    "    else:\n",
+    "        intrinsic_value = 0\n",
+    "        \n",
+    "    curmoves = env.numsteps\n",
+    "    curreward = env.reward\n",
+    "\n",
+    "    curstate = env.staterep()\n",
+    "        \n",
+    "    # if this state is not present in memory (should only happen for start state), add it in\n",
+    "    if curstate not in memory:\n",
+    "        memory[curstate] = {'reward': curreward, 'intrinsic': intrinsic_value, 'moves': curmoves, 'numvisits': 0, 'numselected': 0, 'actionhistory': actionhistory+[]}\n",
+    "        \n",
+    "    curmemory = memory[curstate]\n",
+    "    \n",
+    "    # only increment memory if not doing replay\n",
+    "    if replay:\n",
+    "        curmemory['numvisits'] = 0\n",
+    "        curmemory['numselected'] = 0\n",
+    "    else:\n",
+    "        curmemory['numvisits'] = curmemory['numvisits'] + 1\n",
+    "\n",
+    "    # if not completed, continue to select next move\n",
+    "    validmoves = env.getvalidmoves()\n",
+    "    \n",
+    "    # if no valid moves, no need to continue to next move selection\n",
+    "    if validmoves == []:\n",
+    "        return\n",
+    "    \n",
+    "    bestmove = None\n",
+    "    bestvalue = -1e20\n",
+    "    bestintrinsic = -1e20\n",
+    "    \n",
+    "    # choose best move\n",
+    "    for move in validmoves:\n",
+    "        newenv = copy.deepcopy(env)\n",
+    "        newenv.step(move)\n",
+    "        \n",
+    "        nextmoves = newenv.numsteps\n",
+    "        nextreward = newenv.reward\n",
+    "        nextmemory = None\n",
+    "        \n",
+    "        nextstate = newenv.staterep()\n",
+    "        \n",
+    "        if nextstate in memory:\n",
+    "            nextmemory = memory[nextstate] \n",
+    "            # update the nextmemory if agent has a better reward\n",
+    "            if nextreward > nextmemory['reward']:\n",
+    "                nextmemory['reward'] = nextreward\n",
+    "                nextmemory['moves'] = curmoves + 1\n",
+    "                nextmemory['numvisits'] = 0\n",
+    "                nextmemory['numselected'] = 0\n",
+    "                nextmemory['actionhistory'] = actionhistory+[move]\n",
+    "                \n",
+    "            # update the nextmemory if agent has similar reward but fewer number of moves\n",
+    "            elif nextreward == nextmemory['reward'] and nextmemory['moves'] > curmoves + 1:\n",
+    "                nextmemory['moves'] = curmoves + 1\n",
+    "                nextmemory['numvisits'] = 0\n",
+    "                nextmemory['numselected'] = 0\n",
+    "                nextmemory['actionhistory'] = actionhistory+[move]\n",
+    "                \n",
+    "        # start a new memory if this is a new state\n",
+    "        else:\n",
+    "            # if no intrinsic guiding value, then do without intrinsic motivation\n",
+    "            if intrinsic_fn is not None:\n",
+    "                next_intrinsic_value = intrinsic_fn(newenv)\n",
+    "            else:\n",
+    "                next_intrinsic_value = 0\n",
+    "            memory[nextstate] = {'reward': nextreward, 'intrinsic': next_intrinsic_value, 'moves': curmoves + 1, 'numvisits': 0, 'numselected': 0, 'actionhistory': actionhistory+[move]}\n",
+    "            nextmemory = memory[nextstate]\n",
+    "                \n",
+    "        # best intrinsic is the highest intrinsic value of all 1-step connections\n",
+    "        bestintrinsic = max(bestintrinsic, nextmemory['intrinsic'])\n",
+    "        \n",
+    "        # determine the next square to visit via a heuristic\n",
+    "        reward = nextmemory['reward'] \n",
+    "        moves = nextmemory['moves'] \n",
+    "        numvisits = nextmemory['numvisits']\n",
+    "        intrinsic = nextmemory['intrinsic']\n",
+    "        \n",
+    "        totalvalue = reward_formula(reward = reward, intrinsic = intrinsic, moves = moves, numselected = 0, numvisits = numvisits)\n",
+    "      \n",
+    "        if totalvalue > bestvalue or bestvalue is None:\n",
+    "            bestvalue = totalvalue\n",
+    "            bestmove = move\n",
+    "            \n",
+    "    # if replay:\n",
+    "    # update the one-step lookahead for intrinsic value\n",
+    "    curmemory['intrinsic'] = bestintrinsic*0.99\n",
+    "\n",
+    "    if getbestmove:\n",
+    "        return bestmove\n",
+    "    else:\n",
+    "        return np.random.choice(validmoves)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "9771605f-ad3f-413b-8680-196b06bb2fae",
+   "metadata": {
+    "id": "9771605f-ad3f-413b-8680-196b06bb2fae"
+   },
+   "outputs": [],
+   "source": [
+    "''' Chooses Best Move '''\n",
+    "def GoExploreCount(env, **kwargs):\n",
+    "    return GoExplore(env, getbestmove = True, **kwargs)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d04090b3-345e-471b-ad65-264d1f070865",
+   "metadata": {
+    "id": "d04090b3-345e-471b-ad65-264d1f070865"
+   },
+   "source": [
+    "## Agent 5: Count Agent"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "88b2d20c-e678-40ad-8ede-930afe969646",
+   "metadata": {
+    "id": "88b2d20c-e678-40ad-8ede-930afe969646"
+   },
+   "outputs": [],
+   "source": [
+    "''' Chooses the best move based on memory and intrinsic rewards '''\n",
+    "def CountAgent(env, **kwargs):\n",
+    "    \n",
+    "    # if completed, no need to continue to next move selection\n",
+    "    if env.done:\n",
+    "        return\n",
+    "    \n",
+    "    intrinsic_fn = kwargs.get('intrinsic_fn', None)\n",
+    "    replay = kwargs.get('replay', False)\n",
+    "    actionhistory = kwargs.get('actionhistory', [])\n",
+    "    \n",
+    "    # if no intrinsic guiding value, then do without intrinsic motivation\n",
+    "    if intrinsic_fn is not None:\n",
+    "        intrinsic_value = intrinsic_fn(env)\n",
+    "    else:\n",
+    "        intrinsic_value = 0\n",
+    "        \n",
+    "    curmoves = env.numsteps\n",
+    "    curreward = env.reward\n",
+    "\n",
+    "    curstate = env.staterep()\n",
+    "\n",
+    "    # if this state is not present in memory (should only happen for start state), add it in\n",
+    "    if curstate not in memory:\n",
+    "        memory[curstate] = {'reward': curreward, 'intrinsic': intrinsic_value, 'moves': curmoves, 'numvisits': 0, 'actionhistory': actionhistory+[]}\n",
+    "        \n",
+    "    curmemory = memory[curstate]\n",
+    "    \n",
+    "    # only increment memory if not doing replay\n",
+    "    if replay:\n",
+    "        curmemory['numvisits'] = 0\n",
+    "        curmemory['numselected'] = 0\n",
+    "    else:\n",
+    "        curmemory['numvisits'] = curmemory['numvisits'] + 1\n",
+    "\n",
+    "    # if not completed, continue to select next move\n",
+    "    validmoves = env.getvalidmoves()\n",
+    "    \n",
+    "    # if no valid moves, no need to continue to next move selection\n",
+    "    if validmoves == []:\n",
+    "        return\n",
+    "    \n",
+    "    bestmove = None\n",
+    "    bestvalue = -1e20\n",
+    "    bestintrinsic = -1e20\n",
+    "    \n",
+    "    # choose best move\n",
+    "    for move in validmoves:\n",
+    "        newenv = copy.deepcopy(env)\n",
+    "        newenv.step(move)\n",
+    "        \n",
+    "        nextmoves = newenv.numsteps\n",
+    "        nextreward = newenv.reward\n",
+    "        nextmemory = None\n",
+    "        \n",
+    "        nextstate = newenv.staterep()\n",
+    "\n",
+    "        if nextstate in memory:\n",
+    "            nextmemory = memory[nextstate] \n",
+    "            # update the nextmemory if agent has a better reward\n",
+    "            if nextreward > nextmemory['reward']:\n",
+    "                nextmemory['reward'] = nextreward\n",
+    "                nextmemory['moves'] = curmoves + 1\n",
+    "                nextmemory['numvisits'] = 0\n",
+    "                nextmemory['actionhistory'] = actionhistory+[move]\n",
+    "                \n",
+    "            # update the nextmemory if agent has similar reward but fewer number of moves\n",
+    "            elif nextreward == nextmemory['reward'] and nextmemory['moves'] > curmoves + 1:\n",
+    "                nextmemory['moves'] = curmoves + 1\n",
+    "                nextmemory['numvisits'] = 0\n",
+    "                nextmemory['actionhistory'] = actionhistory+[move]\n",
+    "                \n",
+    "        # start a new memory if this is a new state\n",
+    "        else:\n",
+    "            # if no intrinsic guiding value, then do without intrinsic motivation\n",
+    "            if intrinsic_fn is not None:\n",
+    "                next_intrinsic_value = intrinsic_fn(newenv)\n",
+    "            else:\n",
+    "                next_intrinsic_value = 0\n",
+    "            memory[nextstate] = {'reward': nextreward, 'intrinsic': next_intrinsic_value, 'moves': curmoves + 1, 'numvisits': 0, 'actionhistory': actionhistory+[move]}\n",
+    "            nextmemory = memory[nextstate]\n",
+    "            \n",
+    "        # best intrinsic is the highest intrinsic value of all 1-step connections\n",
+    "        bestintrinsic = max(bestintrinsic, nextmemory['intrinsic'])\n",
+    "        \n",
+    "        # determine the next square to visit via a heuristic\n",
+    "        reward = nextmemory['reward'] \n",
+    "        moves = nextmemory['moves'] \n",
+    "        numvisits = nextmemory['numvisits']\n",
+    "        intrinsic = nextmemory['intrinsic']\n",
+    "        \n",
+    "        totalvalue = reward_formula(reward = reward, intrinsic = intrinsic, moves = moves, numselected = 0, numvisits = numvisits)\n",
+    "        \n",
+    "        if totalvalue > bestvalue:\n",
+    "            bestvalue = totalvalue\n",
+    "            bestmove = move\n",
+    "            \n",
+    "        # update the one-step lookahead for intrinsic value\n",
+    "        curmemory['intrinsic'] = bestintrinsic*0.99\n",
+    "    \n",
+    "    return bestmove"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "00e72846-7e64-4095-87f1-9dc62c60e161",
+   "metadata": {
+    "id": "00e72846-7e64-4095-87f1-9dc62c60e161"
+   },
+   "source": [
+    "# Helper Functions\n",
+    "These functions help to perform hippocampal replay, and evaluation of agent on the environment.\n",
+    "- MemoryReplay: Implements hippocampal replay\n",
+    "- Game: Plays an environment for a single run (episode)\n",
+    "- MultipleGame: Plays an environment for 100 runs"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "cef4c0eb-0b3f-4269-939e-4bf8098ae783",
+   "metadata": {
+    "id": "cef4c0eb-0b3f-4269-939e-4bf8098ae783"
+   },
+   "source": [
+    "## Memory Replay"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "700ccfe8-a2e3-4269-a007-d5375b96359a",
+   "metadata": {
+    "id": "700ccfe8-a2e3-4269-a007-d5375b96359a"
+   },
+   "outputs": [],
+   "source": [
+    "''' Performs memory replay '''\n",
+    "def MemoryReplay(env, bestactionhistory = [], agent = RandomAgent, maxsteps = 500, seed = None, **kwargs):\n",
+    "    statelist = []\n",
+    "    kwargs['replay']=True\n",
+    "    \n",
+    "    # do forward replay to consolidate states\n",
+    "    for move in bestactionhistory:     \n",
+    "        statelist.append(copy.deepcopy(env))\n",
+    "        env.step(move)     \n",
+    "    \n",
+    "    # # do backward replay to update memory\n",
+    "    for env in statelist[::-1]:    \n",
+    "        agent(env, **kwargs)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "0d343a09-3981-4d88-8b96-f682b90fe176",
+   "metadata": {
+    "id": "0d343a09-3981-4d88-8b96-f682b90fe176"
+   },
+   "source": [
+    "## A Single Game"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "8be19f4d-94f4-4480-9b0f-53b716732409",
+   "metadata": {
+    "id": "8be19f4d-94f4-4480-9b0f-53b716732409"
+   },
+   "outputs": [],
+   "source": [
+    "''' Plays 1 game '''\n",
+    "def Game(env, agent = RandomAgent, actionhistory = [], maxsteps = 500, seed = None, verbose = True, **kwargs):\n",
+    "    \n",
+    "    if seed is not None:\n",
+    "        np.random.seed(seed)\n",
+    "    else:\n",
+    "        np.random.seed(0)\n",
+    "    while not env.done and env.numsteps < maxsteps:  \n",
+    "        kwargs['actionhistory'] = actionhistory\n",
+    "        move = agent(env, **kwargs)\n",
+    "        env.step(move)\n",
+    "        actionhistory.append(move)\n",
+    "\n",
+    "    kwargs['actionhistory'] = actionhistory\n",
+    "    # to update final state for RL agents\n",
+    "    agent(env, **kwargs)\n",
+    "    \n",
+    "    if verbose:\n",
+    "        print(env.done, env.reward, env.numsteps)\n",
+    "\n",
+    "    return env.done, env.reward, env.numsteps"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c852e681-f332-48f4-ba3b-f2df2e8f5942",
+   "metadata": {
+    "id": "c852e681-f332-48f4-ba3b-f2df2e8f5942"
+   },
+   "source": [
+    "## Multiple Games"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "1f7ffe41-7222-4308-8070-1c4f5a0e6b5f",
+   "metadata": {
+    "id": "1f7ffe41-7222-4308-8070-1c4f5a0e6b5f"
+   },
+   "outputs": [],
+   "source": [
+    "''' Plays multiple games '''\n",
+    "def MultiGame(env, numtries = 100, hippocampal_replay = True, latex = False, **kwargs):\n",
+    "    solvedcount = 0\n",
+    "    stephistory = []\n",
+    "    bestmemory = 0\n",
+    "    beststeps = 1000000\n",
+    "    firstsolve = None\n",
+    "    tries = numtries\n",
+    "    solved = False\n",
+    "    \n",
+    "    for i in range(tries):\n",
+    "        # choose a new state for GoExplore or GoExploreCount\n",
+    "        if kwargs['agent'] in [GoExplore, GoExploreCount] and i > 0:\n",
+    "            actionhistory, nextenv = ChooseState(env = copy.deepcopy(env))\n",
+    "            done, reward, steps = Game(seed = i, env = copy.deepcopy(nextenv), actionhistory = actionhistory+[], **kwargs)\n",
+    "        else:\n",
+    "            done, reward, steps = Game(seed = i, env = copy.deepcopy(env), actionhistory = [], **kwargs)\n",
+    "        if reward == 1:\n",
+    "            solvedcount += 1\n",
+    "            stephistory.append(steps)\n",
+    "            \n",
+    "            # if first solve, note how much memory is used\n",
+    "            if solvedcount == 1:\n",
+    "                bestmemory = len(memory)\n",
+    "                firstsolve = i+1\n",
+    "                \n",
+    "            if hippocampal_replay:\n",
+    "                # hippocampal replay only for goexplore or intrinsic agent\n",
+    "                if kwargs['agent'] in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "                    actionhistory = None\n",
+    "                    for key, value in memory.items():\n",
+    "                        if memory[key]['reward'] == 1:\n",
+    "                            actionhistory = memory[key]['actionhistory']\n",
+    "\n",
+    "                    # MemoryReplay to improve chance of optimal path being followed\n",
+    "                    if actionhistory is not None:\n",
+    "                        MemoryReplay(env = copy.deepcopy(env), bestactionhistory = actionhistory, **kwargs)\n",
+    "    name = kwargs['agent'].__name__\n",
+    "    if name == 'RandomAgent': \n",
+    "        name = 'Random'\n",
+    "        bestmemory = '-'\n",
+    "    if name == 'QAgent': name = 'Q-Learning'\n",
+    "    if name == 'TDAgent': name = 'TD-Learning'\n",
+    "    if name == 'GoExplore': name = 'Go-Explore'\n",
+    "    if name == 'GoExploreCount': name = 'Go-Explore-Count'\n",
+    "    if name == 'CountAgent': name = 'Explore-Count'\n",
+    "\n",
+    "    if kwargs['agent'] == QAgent or kwargs['agent'] == TDAgent:\n",
+    "        if kwargs.get('eps', 1) == 0:\n",
+    "            name += ' (Test)'\n",
+    "        else:\n",
+    "            name += ' (Train)'\n",
+    "            \n",
+    "    if kwargs.get('intrinsic_fn', None) is not None:\n",
+    "        name += ' GDIR'\n",
+    "\n",
+    "    if 'Explore' in name and hippocampal_replay:\n",
+    "        name += '-HR'\n",
+    "\n",
+    "    if latex:\n",
+    "        if solvedcount == 0:\n",
+    "            print(f\"{name} & {solvedcount}/{tries} & - & - & - & - & - \\\\\\\\\")\n",
+    "        else:\n",
+    "            print(f\"{name} & {solvedcount}/{tries} & {firstsolve} & {bestmemory} & {sum(stephistory)/len(stephistory):.1f} & {min(stephistory):.1f} & {max(stephistory):.1f} \\\\\\\\\")\n",
+    "    else:\n",
+    "        if solvedcount == 0:\n",
+    "            print(f'Agent: {name}, No solves at all, First Solve Memory: {bestmemory}, Total Memory: {len(memory)}')\n",
+    "        else:\n",
+    "            print(f'Agent: {name}, Solve rate: {solvedcount}/{tries} ({solvedcount/tries*100:.1f}%), First Solve: {firstsolve}, First Solve Memory: {bestmemory}, Steps: Avg {sum(stephistory)/len(stephistory):.1f}, Min {min(stephistory):.1f}, Max {max(stephistory):.1f}')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "daca7925-e680-4bab-94d0-7392c8c79abe",
+   "metadata": {
+    "id": "daca7925-e680-4bab-94d0-7392c8c79abe"
+   },
+   "source": [
+    "# Discrete Environments 1 & 2 - Maze Environment (Unwalled, Walled)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "id": "3bfc749b-97af-48a2-a6ff-c4bdd1bd2eb7",
+   "metadata": {
+    "id": "3bfc749b-97af-48a2-a6ff-c4bdd1bd2eb7"
+   },
+   "outputs": [],
+   "source": [
+    "class MazeEnv:\n",
+    "    def __init__(self, height=20, width=20, numbricks = 10, grid = None, doorpos = None, agentpos = None, randomseed = None):\n",
+    "        self.height = height\n",
+    "        self.width = width\n",
+    "        self.doorpos = doorpos\n",
+    "        self.agentpos = agentpos\n",
+    "        self.numbricks = numbricks\n",
+    "        self.randomseed = randomseed\n",
+    "        self.numsteps = 0\n",
+    "        self.done = False\n",
+    "        self.reward = 0\n",
+    "        if self.randomseed is not None:\n",
+    "            np.random.seed(self.randomseed)\n",
+    "        self.mapping = {0: '.', 1: 'X', 2: 'D', 3: '#'}\n",
+    "        \n",
+    "        # if grid not defined, do a random initialization of maze\n",
+    "        if grid is None:\n",
+    "            self.grid = np.zeros((self.height, self.width))\n",
+    "            \n",
+    "            # Step 1: get a door position that is valid\n",
+    "            if doorpos is None:\n",
+    "                self.doorpos = self.getvalidpos()\n",
+    "            else:\n",
+    "                self.doorpos = doorpos\n",
+    "            self.grid[self.doorpos] = 2\n",
+    "\n",
+    "            # Step 2: get a start position that is valid\n",
+    "            if agentpos is None:\n",
+    "                self.agentpos = self.getvalidpos()\n",
+    "            else:\n",
+    "                self.agentpos = agentpos\n",
+    "            self.grid[self.agentpos] = 1\n",
+    "            \n",
+    "            # Step 3: fill in the bricks\n",
+    "            for i in range(self.numbricks):\n",
+    "                self.grid[self.getvalidpos()] = 3\n",
+    "                \n",
+    "        # if grid predefined, get the parameters from there instead\n",
+    "        else:\n",
+    "            self.grid = grid\n",
+    "            self.height, self.width = self.grid.shape\n",
+    "            \n",
+    "            lista, listb = np.where(self.grid == 2)\n",
+    "            if len(lista) == 0 or len(listb) == 0:\n",
+    "                self.doorpos = self.getvalidpos()\n",
+    "            else:\n",
+    "                self.doorpos = (lista[0], listb[0])\n",
+    "            self.grid[self.doorpos] = 2\n",
+    "            \n",
+    "            lista, listb = np.where(self.grid == 1)\n",
+    "            if len(lista) == 0 or len(listb) == 0:\n",
+    "                self.agentpos = self.getvalidpos()\n",
+    "            else:\n",
+    "                self.agentpos = (lista[0], listb[0])\n",
+    "            self.grid[self.agentpos] = 1\n",
+    "            \n",
+    "        # some variables to reset the environment\n",
+    "        self.startgrid = self.grid.copy()\n",
+    "        self.startagentpos = self.agentpos\n",
+    "        self.startdoorpos = self.doorpos\n",
+    "            \n",
+    "    def reset(self):\n",
+    "        self.grid = self.startgrid.copy()\n",
+    "        self.agentpos = self.startagentpos\n",
+    "        self.doorpos = self.startdoorpos\n",
+    "        self.done = False\n",
+    "        self.reward = 0\n",
+    "        self.numsteps = 0\n",
+    "        if self.randomseed is not None:\n",
+    "            np.random.seed(self.randomseed)\n",
+    "            \n",
+    "    # gets state representation\n",
+    "    def staterep(self):\n",
+    "        return str(self.agentpos)\n",
+    "            \n",
+    "    # gets a valid position\n",
+    "    def getvalidpos(self):\n",
+    "        validpos = []\n",
+    "        for i in range(self.height):\n",
+    "            for j in range(self.width):\n",
+    "                if self.grid[i,j] == 0:\n",
+    "                    validpos.append((i,j))\n",
+    "        return validpos[np.random.randint(len(validpos))]\n",
+    "        \n",
+    "    # checks if a position is valid that is not out of the grid and not occupied\n",
+    "    def isvalid(self, pos, allowdoor = False):\n",
+    "        if pos == None or len(pos)!=2:\n",
+    "            return False\n",
+    "        height, width = pos\n",
+    "        if height < 0 or height >= self.height or width < 0 or width >= self.width:\n",
+    "            return False\n",
+    "        if allowdoor and self.grid[height,width] == 2:\n",
+    "            return True\n",
+    "        if self.grid[height,width] == 0:\n",
+    "            return True\n",
+    "        return False\n",
+    "    \n",
+    "    def step(self, move):\n",
+    "        validmoves = self.getvalidmoves()\n",
+    "        # randomly sample a move if not in validmoves\n",
+    "        if move not in validmoves:\n",
+    "            move = validmoves[np.random.randint(len(validmoves))]\n",
+    "        self.numsteps += 1\n",
+    "        self.grid[self.agentpos] = 0\n",
+    "        self.agentpos = self.movedir(self.agentpos, move)\n",
+    "        if self.agentpos == self.doorpos:\n",
+    "            self.done = True\n",
+    "            self.reward = 1\n",
+    "        self.grid[self.agentpos] = 1\n",
+    "    \n",
+    "    def movedir(self, pos, d):\n",
+    "        if pos == None or len(pos)!=2:\n",
+    "            return False\n",
+    "        height, width = pos\n",
+    "        if d=='left':\n",
+    "            return (height, width-1)\n",
+    "        elif d=='right':\n",
+    "            return (height, width+1)\n",
+    "        elif d=='up':\n",
+    "            return (height-1, width)\n",
+    "        elif d=='down':\n",
+    "            return (height+1, width)\n",
+    "    \n",
+    "    def getvalidmoves(self):\n",
+    "        validmoves = []\n",
+    "        for move in ['left', 'right', 'up', 'down']:\n",
+    "            if self.isvalid(self.movedir(self.agentpos, move), allowdoor = True):\n",
+    "                validmoves.append(move)\n",
+    "        return validmoves\n",
+    "    \n",
+    "    def sample(self):\n",
+    "        return np.random.choice(self.getvalidmoves())\n",
+    "    \n",
+    "    def print(self):\n",
+    "        for i in range(self.height):\n",
+    "            for j in range(self.width):\n",
+    "                print(self.mapping[self.grid[i,j]], end = '')\n",
+    "            print()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "id": "4907ded4-bf6b-4a23-8b2e-95dddf9f4e7b",
+   "metadata": {
+    "id": "4907ded4-bf6b-4a23-8b2e-95dddf9f4e7b"
+   },
+   "outputs": [],
+   "source": [
+    "def Manhattan(env):\n",
+    "    ''' Calculates the Manhattan distance between the agent and the door '''\n",
+    "    pointA = env.agentpos\n",
+    "    pointB = env.doorpos\n",
+    "    return -(abs(pointA[0]-pointB[0])+abs(pointA[1]-pointB[1]))/(env.width+env.height-2)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "94c2cd90-ca17-4b85-8b1d-4993e73bfd83",
+   "metadata": {
+    "id": "94c2cd90-ca17-4b85-8b1d-4993e73bfd83"
+   },
+   "source": [
+    "## Unwalled maze (10x10)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "id": "55b99f46-6c75-401a-a4c4-4a05f15c7abe",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "55b99f46-6c75-401a-a4c4-4a05f15c7abe",
+    "outputId": "4b8672a7-b5da-4533-bb49-b8ad635fb0fc"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "X.#...#...\n",
+      "#..#......\n",
+      "#.........\n",
+      "........#.\n",
+      "..........\n",
+      "..........\n",
+      ".........#\n",
+      ".....#....\n",
+      "#.....#...\n",
+      ".........D\n"
+     ]
+    }
+   ],
+   "source": [
+    "# This is how the maze looks like\n",
+    "height, width = 10, 10\n",
+    "env = MazeEnv(height = height, width = width, agentpos = (0, 0), doorpos = (height-1, width-1), randomseed = 1, numbricks = height*width//10)\n",
+    "env.print()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "id": "KVEKW67vV5hy",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "KVEKW67vV5hy",
+    "outputId": "494a33a4-66da-4859-e2c9-4feedfccce50"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, Solve rate: 8/100 (8.0%), First Solve: 8, First Solve Memory: -, Steps: Avg 76.8, Min 54.0, Max 100.0\n",
+      "Agent: Go-Explore, No solves at all, First Solve Memory: 0, Total Memory: 87\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 87\n",
+      "Agent: Go-Explore GDIR, Solve rate: 5/100 (5.0%), First Solve: 12, First Solve Memory: 59, Steps: Avg 88.0, Min 64.0, Max 100.0\n",
+      "Agent: Go-Explore GDIR-HR, Solve rate: 15/100 (15.0%), First Solve: 12, First Solve Memory: 59, Steps: Avg 80.0, Min 50.0, Max 96.0\n",
+      "Agent: Go-Explore-Count, Solve rate: 89/100 (89.0%), First Solve: 1, First Solve Memory: 71, Steps: Avg 41.7, Min 18.0, Max 94.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 99/100 (99.0%), First Solve: 1, First Solve Memory: 71, Steps: Avg 62.3, Min 62.0, Max 94.0\n",
+      "Agent: Go-Explore-Count GDIR, Solve rate: 90/100 (90.0%), First Solve: 1, First Solve Memory: 39, Steps: Avg 42.8, Min 18.0, Max 100.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 39, Steps: Avg 20.0, Min 20.0, Max 20.0\n",
+      "Agent: Explore-Count, Solve rate: 97/100 (97.0%), First Solve: 1, First Solve Memory: 71, Steps: Avg 41.5, Min 18.0, Max 100.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 71, Steps: Avg 62.0, Min 62.0, Max 62.0\n",
+      "Agent: Explore-Count GDIR, Solve rate: 92/100 (92.0%), First Solve: 1, First Solve Memory: 39, Steps: Avg 39.4, Min 18.0, Max 98.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 39, Steps: Avg 20.0, Min 20.0, Max 20.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "latex = False # this is to determine if output is latex friendly\n",
+    "\n",
+    "# for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "for agent in [RandomAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.height*env.width, verbose = False, eps = 0)\n",
+    "\n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    # without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = None)\n",
+    "    # with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = None)\n",
+    "    # intrinsic reward without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = Manhattan)\n",
+    "    # intrinsic reward with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = Manhattan)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c3906a13-114b-4dfa-9330-298a1ecf5430",
+   "metadata": {
+    "id": "c3906a13-114b-4dfa-9330-298a1ecf5430"
+   },
+   "source": [
+    "## Unwalled maze (20x20)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "id": "5fa0f838-6196-4dd3-a830-26ff49bbcc2e",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "5fa0f838-6196-4dd3-a830-26ff49bbcc2e",
+    "outputId": "48a65a05-ef75-4df1-fa75-42fe354508db"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "X.#.....#...........\n",
+      "....#.........#...#.\n",
+      "............#.......\n",
+      "...........#.##.....\n",
+      "............#.......\n",
+      "....................\n",
+      ".....#......##..#...\n",
+      "........#..#...#....\n",
+      "...#................\n",
+      ".....#..............\n",
+      "......#.............\n",
+      "......##.......#.#..\n",
+      "......#.........#..#\n",
+      "....#.#.............\n",
+      "........#.#.#.......\n",
+      "....................\n",
+      "..................#.\n",
+      ".##.#.#.............\n",
+      ".............#.#....\n",
+      "..................#D\n"
+     ]
+    }
+   ],
+   "source": [
+    "# This is how the maze looks like\n",
+    "height, width = 20, 20\n",
+    "env = MazeEnv(height = height, width = width, agentpos = (0, 0), doorpos = (height-1, width-1), randomseed = 1, numbricks = height*width//10)\n",
+    "env.print()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "id": "7129fb89-8201-4c0e-8e31-9ba26e7f3135",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "7129fb89-8201-4c0e-8e31-9ba26e7f3135",
+    "outputId": "24d95ae8-b0f9-49b3-a0f0-cb90166d9af3"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, No solves at all, First Solve Memory: -, Total Memory: 0\n",
+      "Agent: Go-Explore, No solves at all, First Solve Memory: 0, Total Memory: 259\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 259\n",
+      "Agent: Go-Explore GDIR, No solves at all, First Solve Memory: 0, Total Memory: 242\n",
+      "Agent: Go-Explore GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 242\n",
+      "Agent: Go-Explore-Count, Solve rate: 75/100 (75.0%), First Solve: 2, First Solve Memory: 359, Steps: Avg 176.5, Min 78.0, Max 398.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 99/100 (99.0%), First Solve: 2, First Solve Memory: 359, Steps: Avg 342.0, Min 342.0, Max 346.0\n",
+      "Agent: Go-Explore-Count GDIR, Solve rate: 29/100 (29.0%), First Solve: 1, First Solve Memory: 85, Steps: Avg 200.2, Min 42.0, Max 398.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 85, Steps: Avg 42.0, Min 42.0, Max 42.0\n",
+      "Agent: Explore-Count, Solve rate: 85/100 (85.0%), First Solve: 3, First Solve Memory: 359, Steps: Avg 175.9, Min 50.0, Max 396.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 98/100 (98.0%), First Solve: 3, First Solve Memory: 359, Steps: Avg 314.4, Min 308.0, Max 364.0\n",
+      "Agent: Explore-Count GDIR, Solve rate: 68/100 (68.0%), First Solve: 1, First Solve Memory: 85, Steps: Avg 193.4, Min 40.0, Max 400.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 85, Steps: Avg 42.0, Min 42.0, Max 42.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "latex = False # this is to determine if output is latex friendly\n",
+    "\n",
+    "# for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "for agent in [RandomAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.height*env.width, verbose = False, eps = 0)\n",
+    "\n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    # without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = None)\n",
+    "    # with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = None)\n",
+    "    # intrinsic reward without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = Manhattan)\n",
+    "    # intrinsic reward with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = Manhattan)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "422c28c5-f847-473d-98e2-f8d32902e78f",
+   "metadata": {
+    "id": "422c28c5-f847-473d-98e2-f8d32902e78f"
+   },
+   "source": [
+    "## Unwalled maze (100x100)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "id": "4c7d3007-7931-4ac0-9de6-9064d9c265ac",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "4c7d3007-7931-4ac0-9de6-9064d9c265ac",
+    "outputId": "bff6d55c-f031-485d-a90e-11689f68ca83"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "X..#............#...#.#...........##.........#..........#.........#........##........#........#...#.\n",
+      ".......#.#...#.........#.................#...#...#...#..###...................#....#..#....#......#.\n",
+      "....................................#...#.......#...............#...........#.....#.......#......#..\n",
+      "...............#............#..#................#...........#..............................#.#.#....\n",
+      ".......#...............#..........#.................................#..............#.....#..#.......\n",
+      "#.........#.......#.#...........#.....#.#.....#..........#.......#..................................\n",
+      "..........#...........#..#....................#.........#.#.............................#....#......\n",
+      ".#...........#.##.........#.....................#........##.......#....................#....#...#...\n",
+      ".....#............####..............#........#.#..##......#.......#.........................#.......\n",
+      "....#..#.#..........#.......................#............#........#..................##.............\n",
+      ".........#...........................#..................#.........#.......#.......##..#.....#..#....\n",
+      "..#.............#............#............................#...#.......#..........................#..\n",
+      "....#............#.....#.#...##..........#...#.#........................#............#..............\n",
+      ".....#...........#.........#..................###.....#.........#.......#...#......#......#......#..\n",
+      ".................#....#..........#............#..............#.........#................#...#.....#.\n",
+      "#.....................#..#................##...........#...............#.....#.............#........\n",
+      "....................#...#....#.#.#.........#............##........##..#...........................#.\n",
+      ".......#.........#..............#........#....................#...............#....#...#...........#\n",
+      "......................#.....#..............#.............#..............#..............#..#...#....#\n",
+      "......#.......#................#.........................................##.........................\n",
+      ".....#.................#.......#........#...#......#........#..........#......#.....................\n",
+      "............................#.............#....#..#........##.........#.............................\n",
+      ".......#......#.....#.......#.#..##..#......................#....#.....#..................##..#.....\n",
+      ".....#...........#...................#.............#..#..#..............#.#.........................\n",
+      "..........#.....#.#..............#..................................#...............................\n",
+      ".................#..#....................#........#......#...#...#.....#..................#.........\n",
+      ".....#.#....................#...#.....#...........#.#.........#.......#.............#.#.....##......\n",
+      ".........#.....#..#....#.....#..............#................#......#..................#.....##.....\n",
+      ".....#..........................................................#....#......#..........#..........#.\n",
+      "..#...#.....#........#....#................#...........#..#........#........#.........#.........#...\n",
+      "..........#......#.....................#.............#...#.........#.....#......##.......#.....#....\n",
+      ".....#......#.....#......#...........#..........#...............#...................#...............\n",
+      "........#..#..................................#.....##....#.................................#.......\n",
+      ".............#...#...#......#..............##..#.#............#.........#.....#.....#...#.....#....#\n",
+      ".......#......#.....#......#................#.....#......#..#......#.............#..................\n",
+      "..............#................................#......................#.....#...#...................\n",
+      "........#...#.......#.#....#.#.....................#.........#...#..................................\n",
+      ".#.##......................................#......#..........#.#....................#.#.........##..\n",
+      "........##........................#........................#........#...#.#.........................\n",
+      "....#..#........#.......#......##.............................#..........#.......#.........#....#...\n",
+      "...#......#....#....##.........#.........#.................................#....#...#.....#..#......\n",
+      "....#.........#..................#......................#...........#.....#.......#...........#...##\n",
+      "....#.........#............#..##...............##.........#.....#............#..............#.......\n",
+      "........#..#...........#......................#.#....#...................................#.#........\n",
+      "...........#.......#...........#........#.....#............#...............#.#......................\n",
+      ".....................##.......#.....................#.....#............#.......#.........#..#..#....\n",
+      "............#.........#...........#.....#..............#..#........##...........#...................\n",
+      ".........#....#.#..#.....................................#...###.......##.#.........#.........#.....\n",
+      "..............................#.#.#.#....#.................................#........................\n",
+      "...............##.....#......#....#..#...#....#..#..#...........................................#...\n",
+      ".#....#.......#....#.......................#......#.........#.........#..............#.#........#...\n",
+      "#.#...........#..............###..#..#.................#...........#........#.............#...#.....\n",
+      ".....#........#............#......#......#..........#..........#....#...............#..##.......#...\n",
+      ".....#...#.......#.#........#.........#....#............#.......................#.###.....#.......#.\n",
+      ".....#.#..#.#...#.........#.....#.........#..###.......#.#............................#.............\n",
+      "#..................#..##.................#.#...#........................#......#.#............#.....\n",
+      "..#...........#.........#.............................................##...........#........#..#....\n",
+      ".....#...#................#....#.##......#.........#....#..................#....##...........#..#...\n",
+      ".....#..........................#........#.....#.......#.............###......##..........#...#...#.\n",
+      "...................#...#.#...................................#............#............#...........#\n",
+      ".##..##.....#...........#..#.....................#.........#......................#..........#......\n",
+      "..............#..........................##.................#......#..#.............................\n",
+      "......#............#....#...#....................#..................#..............#................\n",
+      ".....#.............#....................#.......#..#.....#.......................#...............#..\n",
+      "...#......#..........#........#..............##....#...#..............#........#...........#..#....#\n",
+      ".......#.................##....#.#...............#....#..#..#.................#.....................\n",
+      "........#..........................................#.........................#..#...............#...\n",
+      "........#.......##.......#....#......................##...#.................#..#...#..........#....#\n",
+      "........#.......#........#......#.........#.#.#....#.#.......#.........#......#...................##\n",
+      "#......#.................#........#..........................................................#......\n",
+      "..#.......#...................#.....#..........#.....................#...#.#.......#...#.#..........\n",
+      ".....#...............#...#............#...#.......#............#..............#.....................\n",
+      "........................................................#.............##.........#..........#.#.##.#\n",
+      ".....##.#.....##.#..............................................#....#......#...##......#...........\n",
+      "...........#...............................#.....#.#...#.............#.....#.#.....#..............##\n",
+      "..#..#...........#.......#............................#.................#..................#.....#..\n",
+      "...........#.#..#............#.....#.#.#.........#........#.#.................##............#....#..\n",
+      "#..#....................#..................##.#......#.....##......#...........#...#..#..........#..\n",
+      ".............#...#.........#............#...........................#..........#...........#.....#..\n",
+      ".#.............##.##......................#.....##.#....#....#........##...................#........\n",
+      "...........#.#..#.....................#.#..#.............#..#.....#.......#.........................\n",
+      ".....#....#.......##....#...........................##..........#......#....#....#..............#...\n",
+      "..#..................#..........#.#...............#..#........#.....#....##.........#.#...#.........\n",
+      "....##.........#....................#....#........#...#..................#.....#...#..#.#...........\n",
+      "................#...............##.........................#......................#..........#.#....\n",
+      "#....#....#.....#.#.......#.............................#...#.................................#..#..\n",
+      ".................#...#..................#.#....................#.......#........##...##.............\n",
+      ".................#...........#............#.............#..........#..........#...#..#......#.......\n",
+      "....#.......#..........................#....##.....#..........#.......##...................#........\n",
+      ".......#............#..#...........#...#.#........#..#...........................#..................\n",
+      "##.........#...#.#..#.#................##...#......#.........#.#...........................#........\n",
+      ".#............#.....................#...................................#..............#............\n",
+      ".....#..#....#.#......#.......#....#..#.............#..................#....#...#...................\n",
+      ".....................#..##....#............#.#.....#........................#.......................\n",
+      ".....#..............#................#.......##....................#....................#..#.#...#..\n",
+      "....#..........................#.#.....#.#........#...#.......#..#.............#....................\n",
+      "#..........#.#....................................##..................#.............................\n",
+      "....................#.......#.#..#..#.....#.#.......#...............#.#.........##..................\n",
+      ".............#...................................#....#..#...#........##............#..#............\n",
+      "..............#...........#.....................#..##........##.....#.........#....................D\n"
+     ]
+    }
+   ],
+   "source": [
+    "# This is how the maze looks like\n",
+    "height, width = 100, 100\n",
+    "env = MazeEnv(height = height, width = width, agentpos = (0, 0), doorpos = (height-1, width-1), randomseed = 1, numbricks = height*width//10)\n",
+    "env.print()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "id": "67f416d9-bec1-444d-863a-b893ef4b96ae",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "67f416d9-bec1-444d-863a-b893ef4b96ae",
+    "outputId": "2563575d-ff22-4362-af72-43889778ef9b"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, Solve rate: 1/100 (1.0%), First Solve: 15, First Solve Memory: -, Steps: Avg 9980.0, Min 9980.0, Max 9980.0\n",
+      "Agent: Go-Explore, No solves at all, First Solve Memory: 0, Total Memory: 3116\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 3116\n",
+      "Agent: Go-Explore GDIR, No solves at all, First Solve Memory: 0, Total Memory: 3111\n",
+      "Agent: Go-Explore GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 3111\n",
+      "Agent: Go-Explore-Count, Solve rate: 78/100 (78.0%), First Solve: 1, First Solve Memory: 7597, Steps: Avg 5533.1, Min 4312.0, Max 9498.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 7597, Steps: Avg 6003.3, Min 5984.0, Max 7854.0\n",
+      "Agent: Go-Explore-Count GDIR, Solve rate: 2/100 (2.0%), First Solve: 1, First Solve Memory: 499, Steps: Avg 231.0, Min 230.0, Max 232.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 499, Steps: Avg 230.0, Min 230.0, Max 230.0\n",
+      "Agent: Explore-Count, Solve rate: 98/100 (98.0%), First Solve: 1, First Solve Memory: 7597, Steps: Avg 3501.8, Min 1436.0, Max 8286.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 7597, Steps: Avg 5984.0, Min 5984.0, Max 5984.0\n",
+      "Agent: Explore-Count GDIR, Solve rate: 48/100 (48.0%), First Solve: 1, First Solve Memory: 499, Steps: Avg 4402.7, Min 216.0, Max 9830.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 499, Steps: Avg 224.1, Min 224.0, Max 230.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "latex = False # this is to determine if output is latex friendly\n",
+    "\n",
+    "# for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "for agent in [RandomAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.height*env.width, verbose = False, eps = 0)\n",
+    "\n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    # without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = None)\n",
+    "    # with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = None)\n",
+    "    # intrinsic reward without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = Manhattan)\n",
+    "    # intrinsic reward with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = Manhattan)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "b3b91b2c-2960-4b18-8fcd-808902e97a50",
+   "metadata": {
+    "id": "b3b91b2c-2960-4b18-8fcd-808902e97a50"
+   },
+   "source": [
+    "## Walled maze (10x10)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "id": "644c7e52-d8f5-4309-a450-965af5e2f971",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "644c7e52-d8f5-4309-a450-965af5e2f971",
+    "outputId": "878c04da-d86f-40fd-8ec5-c5ace569a42a"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "X...#.....\n",
+      "....#...#.\n",
+      "....#...#.\n",
+      "....#...#.\n",
+      "....#...#.\n",
+      "##.###.##.\n",
+      "....#...#.\n",
+      "........#.\n",
+      "....#...#.\n",
+      "....#...#D\n"
+     ]
+    }
+   ],
+   "source": [
+    "# create game environment\n",
+    "size = 10\n",
+    "grid = np.zeros((size,size))\n",
+    "maxheight, maxwidth = grid.shape\n",
+    "grid[:, maxwidth//2-1] = 3\n",
+    "grid[maxheight//2,:] = 3\n",
+    "grid[1:maxheight, maxwidth-2] = 3\n",
+    "grid[maxheight//2, maxwidth//4] = 0\n",
+    "grid[maxheight//2, 3*maxwidth//4-1] = 0\n",
+    "grid[3*maxheight//4, maxwidth//2-1] = 0\n",
+    "grid[maxheight//2, maxwidth-1] = 0\n",
+    "grid[0, 0] = 1\n",
+    "grid[maxheight-1, maxwidth-1] = 2\n",
+    "env = MazeEnv(grid = grid)\n",
+    "env.print()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "id": "91f53743-83f1-46b5-bbea-b950e2738e52",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "91f53743-83f1-46b5-bbea-b950e2738e52",
+    "outputId": "46b992f7-f665-4752-8a77-d98e425eed5e"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, No solves at all, First Solve Memory: -, Total Memory: 0\n",
+      "Agent: Go-Explore, No solves at all, First Solve Memory: 0, Total Memory: 77\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 77\n",
+      "Agent: Go-Explore GDIR, No solves at all, First Solve Memory: 0, Total Memory: 77\n",
+      "Agent: Go-Explore GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 77\n",
+      "Agent: Go-Explore-Count, Solve rate: 85/100 (85.0%), First Solve: 1, First Solve Memory: 74, Steps: Avg 57.1, Min 32.0, Max 100.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 74, Steps: Avg 64.0, Min 64.0, Max 64.0\n",
+      "Agent: Go-Explore-Count GDIR, Solve rate: 71/100 (71.0%), First Solve: 1, First Solve Memory: 62, Steps: Avg 50.7, Min 32.0, Max 100.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 62, Steps: Avg 60.0, Min 60.0, Max 60.0\n",
+      "Agent: Explore-Count, Solve rate: 71/100 (71.0%), First Solve: 1, First Solve Memory: 74, Steps: Avg 63.1, Min 40.0, Max 100.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 74, Steps: Avg 64.0, Min 64.0, Max 64.0\n",
+      "Agent: Explore-Count GDIR, Solve rate: 68/100 (68.0%), First Solve: 1, First Solve Memory: 62, Steps: Avg 61.8, Min 34.0, Max 98.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 62, Steps: Avg 58.0, Min 56.0, Max 60.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "latex = False # this is to determine if output is latex friendly\n",
+    "\n",
+    "# for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "for agent in [RandomAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.height*env.width, verbose = False, eps = 0)\n",
+    "\n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    # without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = None)\n",
+    "    # with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = None)\n",
+    "    # intrinsic reward without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = Manhattan)\n",
+    "    # intrinsic reward with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = Manhattan)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "103911ef-dd19-4146-8457-9116c2c352e6",
+   "metadata": {
+    "id": "103911ef-dd19-4146-8457-9116c2c352e6"
+   },
+   "source": [
+    "## Walled maze (20x20)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "id": "3b2f7559-5cc6-4556-8a8b-543cbe8e6cd4",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "3b2f7559-5cc6-4556-8a8b-543cbe8e6cd4",
+    "outputId": "e51b1dd3-2e0c-4989-83d8-447e75726ea7"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "X........#..........\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      "#####.########.####.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      "..................#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#.\n",
+      ".........#........#D\n"
+     ]
+    }
+   ],
+   "source": [
+    "# create game environment\n",
+    "size = 20\n",
+    "grid = np.zeros((size,size))\n",
+    "maxheight, maxwidth = grid.shape\n",
+    "grid[:, maxwidth//2-1] = 3\n",
+    "grid[maxheight//2,:] = 3\n",
+    "grid[1:maxheight, maxwidth-2] = 3\n",
+    "grid[maxheight//2, maxwidth//4] = 0\n",
+    "grid[maxheight//2, 3*maxwidth//4-1] = 0\n",
+    "grid[3*maxheight//4, maxwidth//2-1] = 0\n",
+    "grid[maxheight//2, maxwidth-1] = 0\n",
+    "grid[0, 0] = 1\n",
+    "grid[maxheight-1, maxwidth-1] = 2\n",
+    "env = MazeEnv(grid = grid)\n",
+    "env.print()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "id": "6d3fdd4b-b771-4934-9d74-88c8639a6763",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "6d3fdd4b-b771-4934-9d74-88c8639a6763",
+    "outputId": "0113d053-6d4b-4e89-cfca-0ae364e2db75"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, No solves at all, First Solve Memory: -, Total Memory: 0\n",
+      "Agent: Go-Explore, No solves at all, First Solve Memory: 0, Total Memory: 322\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 322\n",
+      "Agent: Go-Explore GDIR, Solve rate: 4/100 (4.0%), First Solve: 60, First Solve Memory: 347, Steps: Avg 398.0, Min 394.0, Max 400.0\n",
+      "Agent: Go-Explore GDIR-HR, Solve rate: 10/100 (10.0%), First Solve: 60, First Solve Memory: 347, Steps: Avg 396.8, Min 394.0, Max 400.0\n",
+      "Agent: Go-Explore-Count, Solve rate: 76/100 (76.0%), First Solve: 1, First Solve Memory: 312, Steps: Avg 211.2, Min 144.0, Max 398.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 312, Steps: Avg 218.0, Min 218.0, Max 218.0\n",
+      "Agent: Go-Explore-Count GDIR, Solve rate: 58/100 (58.0%), First Solve: 1, First Solve Memory: 223, Steps: Avg 177.3, Min 86.0, Max 380.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 223, Steps: Avg 220.0, Min 220.0, Max 220.0\n",
+      "Agent: Explore-Count, Solve rate: 60/100 (60.0%), First Solve: 1, First Solve Memory: 312, Steps: Avg 297.2, Min 146.0, Max 400.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 312, Steps: Avg 218.0, Min 218.0, Max 218.0\n",
+      "Agent: Explore-Count GDIR, Solve rate: 44/100 (44.0%), First Solve: 1, First Solve Memory: 223, Steps: Avg 308.5, Min 74.0, Max 400.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 223, Steps: Avg 194.5, Min 194.0, Max 220.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "latex = False # this is to determine if output is latex friendly\n",
+    "\n",
+    "# for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "for agent in [RandomAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.height*env.width, verbose = False, eps = 0)\n",
+    "\n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    # without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = None)\n",
+    "    # with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = None)\n",
+    "    # intrinsic reward without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = Manhattan)\n",
+    "    # intrinsic reward with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = Manhattan)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "560e37e2-aaea-416b-8d9f-652da51aa602",
+   "metadata": {
+    "id": "560e37e2-aaea-416b-8d9f-652da51aa602"
+   },
+   "source": [
+    "## Walled maze (100x100)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "id": "9db7318b-2126-4ea0-96b6-9ef2715adc49",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "9db7318b-2126-4ea0-96b6-9ef2715adc49",
+    "outputId": "5d65893d-e370-412c-cfa7-2945d82b1220"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "X................................................#..................................................\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      "#########################.################################################.########################.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      "..................................................................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#.\n",
+      ".................................................#................................................#D\n"
+     ]
+    }
+   ],
+   "source": [
+    "# create game environment\n",
+    "size = 100\n",
+    "grid = np.zeros((size,size))\n",
+    "maxheight, maxwidth = grid.shape\n",
+    "grid[:, maxwidth//2-1] = 3\n",
+    "grid[maxheight//2,:] = 3\n",
+    "grid[1:maxheight, maxwidth-2] = 3\n",
+    "grid[maxheight//2, maxwidth//4] = 0\n",
+    "grid[maxheight//2, 3*maxwidth//4-1] = 0\n",
+    "grid[3*maxheight//4, maxwidth//2-1] = 0\n",
+    "grid[maxheight//2, maxwidth-1] = 0\n",
+    "grid[0, 0] = 1\n",
+    "grid[maxheight-1, maxwidth-1] = 2\n",
+    "env = MazeEnv(grid = grid)\n",
+    "env.print()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "id": "97c2936b-e682-4479-bbff-8657b3f2725d",
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/"
+    },
+    "id": "97c2936b-e682-4479-bbff-8657b3f2725d",
+    "outputId": "57a0c68f-af0c-45ab-dd10-1de195fad54f"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, No solves at all, First Solve Memory: -, Total Memory: 0\n",
+      "Agent: Go-Explore, No solves at all, First Solve Memory: 0, Total Memory: 2334\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 2334\n",
+      "Agent: Go-Explore GDIR, No solves at all, First Solve Memory: 0, Total Memory: 2520\n",
+      "Agent: Go-Explore GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 2520\n",
+      "Agent: Go-Explore-Count, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 7552, Steps: Avg 4918.2, Min 4718.0, Max 6362.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 7552, Steps: Avg 4912.0, Min 4912.0, Max 4912.0\n",
+      "Agent: Go-Explore-Count GDIR, Solve rate: 97/100 (97.0%), First Solve: 1, First Solve Memory: 5105, Steps: Avg 8712.3, Min 8474.0, Max 9996.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 5105, Steps: Avg 8922.0, Min 8922.0, Max 8922.0\n",
+      "Agent: Explore-Count, Solve rate: 52/100 (52.0%), First Solve: 1, First Solve Memory: 7552, Steps: Avg 7039.0, Min 3094.0, Max 9758.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 7552, Steps: Avg 4912.0, Min 4912.0, Max 4912.0\n",
+      "Agent: Explore-Count GDIR, Solve rate: 32/100 (32.0%), First Solve: 1, First Solve Memory: 5105, Steps: Avg 5032.2, Min 2150.0, Max 9978.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 5105, Steps: Avg 2298.8, Min 2184.0, Max 8922.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "latex = False # this is to determine if output is latex friendly\n",
+    "\n",
+    "# for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "for agent in [RandomAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.height*env.width, verbose = False, eps = 0)\n",
+    "\n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    # without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = None)\n",
+    "    # with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = None)\n",
+    "    # intrinsic reward without hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, hippocampal_replay = False, verbose = False, intrinsic_fn = Manhattan)\n",
+    "    # intrinsic reward with hippocampal replay\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, latex = latex, maxsteps = env.height*env.width, verbose = False, intrinsic_fn = Manhattan)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "f555aeca-0380-4995-988f-f24bc751c2f5",
+   "metadata": {
+    "tags": []
+   },
+   "source": [
+    "# Discrete Environment 3: Narrow Action Pathway - Tower of Hanoi\n",
+    "\n",
+    "- Transfer all plates from first pole to third pole\n",
+    "- Each turn can move the top plate from an existing pole to another pole\n",
+    "- Constraint: the plate that is transferred to the new pole must be smaller than the current topmost plate of that pole\n",
+    "- Reward: 1 if all plates transferred successfully, 0 if not"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "id": "34af24a1-4431-46f3-a86b-738466f96966",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class HanoiEnv:\n",
+    "    def __init__(self, numplates = 3, grid = None):\n",
+    "        self.numplates = numplates\n",
+    "        self.numsteps = 0\n",
+    "        self.done = False\n",
+    "        self.reward = 0\n",
+    "        # if grid not defined, then set to original position\n",
+    "        if grid is None:\n",
+    "            self.grid = [list(range(1, self.numplates+1)), [], []]\n",
+    "                \n",
+    "        # if grid predefined, get the parameters from there instead\n",
+    "        else:\n",
+    "            self.grid = grid\n",
+    "            \n",
+    "        # some variables to reset the environment\n",
+    "        self.startgrid = self.grid.copy()\n",
+    "            \n",
+    "    def reset(self):\n",
+    "        self.grid = self.startgrid.copy()\n",
+    "        self.done = False\n",
+    "        self.reward = 0\n",
+    "        self.numsteps = 0\n",
+    "        \n",
+    "    # returns state representation\n",
+    "    def staterep(self):\n",
+    "        return str(self.grid)\n",
+    "            \n",
+    "    # gets a valid move\n",
+    "    def getvalidmoves(self):\n",
+    "        validmoves = []\n",
+    "        for num, (pole1, pole2) in enumerate([(0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)]):\n",
+    "            # if nothing to transfer, skip move\n",
+    "            if len(self.grid[pole1]) == 0: continue\n",
+    "            # if pole to be transferred to is empty, accept move\n",
+    "            if len(self.grid[pole2]) == 0: validmoves.append(num)\n",
+    "            # if piece to be transferred is smaller than the topmost piece of new pole, accept it\n",
+    "            elif self.grid[pole1][0] < self.grid[pole2][0]: validmoves.append(num)    \n",
+    "            \n",
+    "        return validmoves\n",
+    "    \n",
+    "    def step(self, move):\n",
+    "        validmoves = self.getvalidmoves()\n",
+    "        # randomly sample a move if not in validmoves\n",
+    "        if move not in validmoves:\n",
+    "            move = validmoves[np.random.randint(len(validmoves))]\n",
+    "        self.numsteps += 1\n",
+    "        \n",
+    "        movechoices = [(0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)]\n",
+    "        # do the move\n",
+    "        pole1, pole2 = movechoices[move]\n",
+    "        self.grid[pole2] = [self.grid[pole1][0]] + self.grid[pole2]\n",
+    "        self.grid[pole1] = self.grid[pole1][1:]\n",
+    "        \n",
+    "        # check for completion\n",
+    "        if self.grid[2] == list(range(1, self.numplates+1)):\n",
+    "            self.reward = 1\n",
+    "            self.done = True\n",
+    "    \n",
+    "    def sample(self):\n",
+    "        return np.random.choice(self.getvalidmoves())\n",
+    "    \n",
+    "    def print(self):\n",
+    "        print(self.grid[0], self.grid[1], self.grid[2])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "id": "db12bce2-8ac5-48eb-a5e2-14d5af3fcca8",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "''' Number of disks away from solution (neg) '''\n",
+    "def Disk(env):\n",
+    "    finalpole = env.grid[2][::-1]\n",
+    "    totalsum = 0\n",
+    "    for i in range(env.numplates):\n",
+    "        if i+1 > len(finalpole): break\n",
+    "        if env.numplates - i != finalpole[i]: break\n",
+    "        # totalsum += env.numplates - i\n",
+    "        totalsum += 1\n",
+    "    # return (totalsum - np.sum(list(range(env.numplates+1))))/np.sum(list(range(env.numplates+1)))\n",
+    "    return (totalsum - env.numplates)/env.numplates"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "id": "150b73cc-2bf8-471a-9fee-9889e93c92d9",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "env = HanoiEnv(numplates = 3)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "id": "778286ea-28d0-4e5e-a578-85ae0f01ce2e",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, Solve rate: 10/100 (10.0%), First Solve: 8, First Solve Memory: -, Steps: Avg 25.4, Min 17.0, Max 32.0\n",
+      "Agent: TD-Learning (Train), Solve rate: 13/100 (13.0%), First Solve: 4, First Solve Memory: 21, Steps: Avg 24.9, Min 13.0, Max 32.0\n",
+      "Agent: TD-Learning (Test), Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 27, Steps: Avg 7.0, Min 7.0, Max 7.0\n",
+      "Agent: Q-Learning (Train), Solve rate: 13/100 (13.0%), First Solve: 4, First Solve Memory: 46, Steps: Avg 24.9, Min 13.0, Max 32.0\n",
+      "Agent: Q-Learning (Test), Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 78, Steps: Avg 7.0, Min 7.0, Max 7.0\n",
+      "Agent: Go-Explore-HR, Solve rate: 28/100 (28.0%), First Solve: 33, First Solve Memory: 27, Steps: Avg 20.0, Min 9.0, Max 31.0\n",
+      "Agent: Go-Explore GDIR-HR, Solve rate: 25/100 (25.0%), First Solve: 45, First Solve Memory: 27, Steps: Avg 22.0, Min 13.0, Max 31.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 15, Steps: Avg 9.3, Min 9.0, Max 32.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 15, Steps: Avg 9.0, Min 9.0, Max 9.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 15, Steps: Avg 9.0, Min 9.0, Max 9.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 15, Steps: Avg 9.0, Min 9.0, Max 9.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, eps = 0)\n",
+    "    \n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, intrinsic_fn = None)\n",
+    "\n",
+    "    # for Intrinsic Agent, we also do the run with intrinsic motivation\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, intrinsic_fn = Disk)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "id": "b98cc145-849e-4bda-94cc-a92468df39da",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "env = HanoiEnv(numplates = 7)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 33,
+   "id": "e33f3945-6756-43d1-9e99-c5d463299c0e",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, No solves at all, First Solve Memory: -, Total Memory: 0\n",
+      "Agent: TD-Learning (Train), No solves at all, First Solve Memory: 0, Total Memory: 259\n",
+      "Agent: TD-Learning (Test), No solves at all, First Solve Memory: 0, Total Memory: 259\n",
+      "Agent: Q-Learning (Train), No solves at all, First Solve Memory: 0, Total Memory: 764\n",
+      "Agent: Q-Learning (Test), No solves at all, First Solve Memory: 0, Total Memory: 764\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 269\n",
+      "Agent: Go-Explore GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 269\n",
+      "Agent: Go-Explore-Count-HR, No solves at all, First Solve Memory: 0, Total Memory: 919\n",
+      "Agent: Go-Explore-Count GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 919\n",
+      "Agent: Explore-Count-HR, Solve rate: 82/100 (82.0%), First Solve: 19, First Solve Memory: 1660, Steps: Avg 398.2, Min 397.0, Max 465.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 91/100 (91.0%), First Solve: 10, First Solve Memory: 1095, Steps: Avg 375.1, Min 375.0, Max 383.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, eps = 0)\n",
+    "    \n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, intrinsic_fn = None)\n",
+    "\n",
+    "    # for Intrinsic Agent, we also do the run with intrinsic motivation\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, intrinsic_fn = Disk)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 34,
+   "id": "08fb0839-cf63-4bdc-b3ed-9278d834543f",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "env = HanoiEnv(numplates = 8)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "id": "df39c398-3bde-4731-b7c8-9486857d2c8c",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, No solves at all, First Solve Memory: -, Total Memory: 0\n",
+      "Agent: TD-Learning (Train), No solves at all, First Solve Memory: 0, Total Memory: 536\n",
+      "Agent: TD-Learning (Test), No solves at all, First Solve Memory: 0, Total Memory: 536\n",
+      "Agent: Q-Learning (Train), No solves at all, First Solve Memory: 0, Total Memory: 1541\n",
+      "Agent: Q-Learning (Test), No solves at all, First Solve Memory: 0, Total Memory: 1541\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 502\n",
+      "Agent: Go-Explore GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 479\n",
+      "Agent: Go-Explore-Count-HR, No solves at all, First Solve Memory: 0, Total Memory: 1837\n",
+      "Agent: Go-Explore-Count GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 1837\n",
+      "Agent: Explore-Count-HR, Solve rate: 49/200 (24.5%), First Solve: 152, First Solve Memory: 5235, Steps: Avg 846.4, Min 844.0, Max 961.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 183/200 (91.5%), First Solve: 18, First Solve Memory: 3282, Steps: Avg 1023.0, Min 1023.0, Max 1024.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 200, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 200, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, eps = 0)\n",
+    "    \n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 200, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, intrinsic_fn = None)\n",
+    "\n",
+    "    # for Intrinsic Agent, we also do the run with intrinsic motivation\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 200, env = copy.deepcopy(env), agent = agent, maxsteps = 2**(env.numplates+2), verbose = False, intrinsic_fn = Disk)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "b4ace597-1898-457c-9362-28bacaca6d6e",
+   "metadata": {
+    "tags": []
+   },
+   "source": [
+    "# Discrete Environment 4: Narrowest Action Pathway - Game of Nim with Perfect Opponent\n",
+    "- There are N matchsticks\n",
+    "- Each turn, players rotate to remove 1-X matchsticks\n",
+    "- Player to remove the last matchstick wins"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "id": "7b30fcca-f50f-4ff0-b6af-f393116b09f9",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class NimEnv:\n",
+    "    def __init__(self, nummatches = 21, nummoves = 3, deterministic = True):\n",
+    "        self.nummatches = nummatches\n",
+    "        self.nummoves = nummoves\n",
+    "        self.numsteps = 0\n",
+    "        self.reward = 0\n",
+    "        self.deterministic = deterministic\n",
+    "        self.afterstate = nummatches\n",
+    "        self.done = False\n",
+    "            \n",
+    "        # some variables to reset the environment\n",
+    "        self.startmatches = self.nummatches\n",
+    "        self.afterstate = nummatches\n",
+    "            \n",
+    "    def reset(self):\n",
+    "        self.nummatches = self.startmatches\n",
+    "        self.reward = 0\n",
+    "        self.done = False\n",
+    "        self.numsteps = 0\n",
+    "        \n",
+    "    # returns state representation\n",
+    "    def staterep(self):\n",
+    "        return str([self.nummatches, self.nummoves])\n",
+    "            \n",
+    "    # gets a valid move\n",
+    "    def getvalidmoves(self):\n",
+    "        validmoves = list(range(1, min(self.nummatches, self.nummoves)+1))\n",
+    "        # give a valid move just to help with the learning process\n",
+    "        if validmoves == []: validmoves = [0]\n",
+    "        return validmoves\n",
+    "    \n",
+    "    def step(self, move):\n",
+    "        if self.done:\n",
+    "            return\n",
+    "        \n",
+    "        validmoves = self.getvalidmoves()\n",
+    "        # randomly sample a move if not in validmoves\n",
+    "        if move not in validmoves:\n",
+    "            move = validmoves[np.random.randint(len(validmoves))]\n",
+    "        self.numsteps += 1\n",
+    "        \n",
+    "        # do your move\n",
+    "        self.nummatches -= move\n",
+    "        \n",
+    "        # get the afterstate\n",
+    "        self.afterstate = self.nummatches\n",
+    "        \n",
+    "        if self.nummatches == 0:\n",
+    "            self.done = True\n",
+    "            self.reward = 1\n",
+    "            return\n",
+    "        \n",
+    "        # do the perfect player's move\n",
+    "        # choose randomly if already at perfect number\n",
+    "        if self.nummatches % (self.nummoves+1) == 0:\n",
+    "            if self.deterministic:\n",
+    "                self.nummatches -= 1\n",
+    "            else:\n",
+    "                self.nummatches -= self.sample()\n",
+    "            \n",
+    "        # else make it perfect number\n",
+    "        else:\n",
+    "            self.nummatches -= self.nummatches % (self.nummoves+1)\n",
+    "            \n",
+    "        if self.nummatches == 0:\n",
+    "            # failure state just for accounting purposes\n",
+    "            self.nummatches = -1\n",
+    "            self.done = True\n",
+    "            return\n",
+    "    \n",
+    "    def sample(self):\n",
+    "        return np.random.choice(self.getvalidmoves())\n",
+    "    \n",
+    "    def print(self):\n",
+    "        print(self.nummatches, self.nummoves)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "id": "486965ee-ee47-4691-94b6-a1a144238a02",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "''' Gets the answer to remove matchsticks by modulo '''\n",
+    "def Modulo(env):\n",
+    "    return -(env.afterstate % (env.nummoves+1))/env.nummoves"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 38,
+   "id": "a415e7a7-0f92-49e4-bca0-dd746f9f64de",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "''' Gives a distance based on number of matches away from the goal '''\n",
+    "def CountMatches(env):\n",
+    "    return -env.afterstate/env.startmatches"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 39,
+   "id": "757efc74-2052-47a5-b3a5-d2ad6d655342",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "env = NimEnv(nummatches = 11, nummoves = 3, deterministic = True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 40,
+   "id": "51ecba87-4593-4b2b-be8c-4853d41f7ba4",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, Solve rate: 4/100 (4.0%), First Solve: 71, First Solve Memory: -, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: TD-Learning (Train), Solve rate: 5/100 (5.0%), First Solve: 27, First Solve Memory: 7, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: TD-Learning (Test), Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 7, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: Q-Learning (Train), Solve rate: 5/100 (5.0%), First Solve: 27, First Solve Memory: 17, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: Q-Learning (Test), Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 17, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: Go-Explore-HR, Solve rate: 15/100 (15.0%), First Solve: 4, First Solve Memory: 7, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: Go-Explore GDIR-HR, Solve rate: 17/100 (17.0%), First Solve: 4, First Solve Memory: 7, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 98/100 (98.0%), First Solve: 3, First Solve Memory: 7, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 7, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 99/100 (99.0%), First Solve: 2, First Solve Memory: 7, Steps: Avg 3.0, Min 3.0, Max 3.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 100/100 (100.0%), First Solve: 1, First Solve Memory: 7, Steps: Avg 3.0, Min 3.0, Max 3.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, eps = 0)\n",
+    "    \n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, intrinsic_fn = None)\n",
+    "\n",
+    "    # for Intrinsic Agent, we also do the run with intrinsic motivation\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, intrinsic_fn = CountMatches)\n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 41,
+   "id": "6a8ef4ed-27e9-40ad-abff-376a681b01c8",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "env = NimEnv(nummatches = 21, nummoves = 3, deterministic = True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "id": "0ecccdbe-4f57-4625-82a5-9163a98d8c48",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, No solves at all, First Solve Memory: -, Total Memory: 0\n",
+      "Agent: TD-Learning (Train), No solves at all, First Solve Memory: 0, Total Memory: 11\n",
+      "Agent: TD-Learning (Test), No solves at all, First Solve Memory: 0, Total Memory: 11\n",
+      "Agent: Q-Learning (Train), No solves at all, First Solve Memory: 0, Total Memory: 28\n",
+      "Agent: Q-Learning (Test), No solves at all, First Solve Memory: 0, Total Memory: 28\n",
+      "Agent: Go-Explore-HR, Solve rate: 16/100 (16.0%), First Solve: 5, First Solve Memory: 12, Steps: Avg 6.0, Min 6.0, Max 6.0\n",
+      "Agent: Go-Explore GDIR-HR, Solve rate: 7/100 (7.0%), First Solve: 5, First Solve Memory: 12, Steps: Avg 6.0, Min 6.0, Max 6.0\n",
+      "Agent: Go-Explore-Count-HR, Solve rate: 98/100 (98.0%), First Solve: 3, First Solve Memory: 12, Steps: Avg 6.0, Min 6.0, Max 6.0\n",
+      "Agent: Go-Explore-Count GDIR-HR, Solve rate: 98/100 (98.0%), First Solve: 3, First Solve Memory: 12, Steps: Avg 6.0, Min 6.0, Max 6.0\n",
+      "Agent: Explore-Count-HR, Solve rate: 98/100 (98.0%), First Solve: 3, First Solve Memory: 12, Steps: Avg 6.0, Min 6.0, Max 6.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 99/100 (99.0%), First Solve: 2, First Solve Memory: 12, Steps: Avg 6.0, Min 6.0, Max 6.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, eps = 0)\n",
+    "    \n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, intrinsic_fn = None)\n",
+    "\n",
+    "    # for Intrinsic Agent, we also do the run with intrinsic motivation\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, intrinsic_fn = CountMatches)\n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "id": "931048db-1626-4de7-bc58-08d259c6044a",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "env = NimEnv(nummatches = 1001, nummoves = 3, deterministic = True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 44,
+   "id": "5dcf4e37-c1db-4efe-adda-6c7ac0877d7d",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Agent: Random, No solves at all, First Solve Memory: -, Total Memory: 0\n",
+      "Agent: TD-Learning (Train), No solves at all, First Solve Memory: 0, Total Memory: 256\n",
+      "Agent: TD-Learning (Test), No solves at all, First Solve Memory: 0, Total Memory: 256\n",
+      "Agent: Q-Learning (Train), No solves at all, First Solve Memory: 0, Total Memory: 763\n",
+      "Agent: Q-Learning (Test), No solves at all, First Solve Memory: 0, Total Memory: 763\n",
+      "Agent: Go-Explore-HR, No solves at all, First Solve Memory: 0, Total Memory: 253\n",
+      "Agent: Go-Explore GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 253\n",
+      "Agent: Go-Explore-Count-HR, No solves at all, First Solve Memory: 0, Total Memory: 254\n",
+      "Agent: Go-Explore-Count GDIR-HR, No solves at all, First Solve Memory: 0, Total Memory: 252\n",
+      "Agent: Explore-Count-HR, Solve rate: 98/100 (98.0%), First Solve: 3, First Solve Memory: 502, Steps: Avg 251.0, Min 251.0, Max 251.0\n",
+      "Agent: Explore-Count GDIR-HR, Solve rate: 99/100 (99.0%), First Solve: 2, First Solve Memory: 502, Steps: Avg 251.0, Min 251.0, Max 251.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "for agent in [RandomAgent, TDAgent, QAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False)\n",
+    "    \n",
+    "    # for QAgent and TDAgent, we include the final number of solves with deterministic transition\n",
+    "    if agent == QAgent or agent == TDAgent:\n",
+    "        MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, eps = 0)\n",
+    "    \n",
+    "for agent in [GoExplore, GoExploreCount, CountAgent]:\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, intrinsic_fn = None)\n",
+    "\n",
+    "    # for Intrinsic Agent, we also do the run with intrinsic motivation\n",
+    "    memory = defaultdict(lambda: 0)\n",
+    "    MultiGame(numtries = 100, env = copy.deepcopy(env), agent = agent, maxsteps = env.nummatches, verbose = False, intrinsic_fn = CountMatches)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "2935e667-ccea-4520-b758-621d026e195a",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "colab": {
+   "collapsed_sections": [],
+   "provenance": []
+  },
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.7"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
